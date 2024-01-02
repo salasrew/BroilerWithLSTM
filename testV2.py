@@ -51,6 +51,10 @@ print("Tensor shapes:", X_train.shape, y_train.shape)  # 再次检查形状
 train_data = TensorDataset(X_train, y_train)
 test_data = TensorDataset(X_test, y_test)
 
+batch_size = 128  # 或者您希望的其他大小
+train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=False)
+test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
+
 import torch.nn as nn
 
 class LSTMModel(nn.Module):
@@ -62,12 +66,28 @@ class LSTMModel(nn.Module):
         self.hidden_cell = (torch.zeros(1,1,self.hidden_layer_size),
                             torch.zeros(1,1,self.hidden_layer_size))
 
+    # def forward(self, input_seq):
+    #     lstm_out, self.hidden_cell = self.lstm(input_seq.view(len(input_seq), 1, -1), self.hidden_cell)
+    #     predictions = self.linear(lstm_out.view(len(input_seq), -1))
+    #     return predictions[-1]
     def forward(self, input_seq):
-        lstm_out, self.hidden_cell = self.lstm(input_seq.view(len(input_seq), 1, -1), self.hidden_cell)
-        predictions = self.linear(lstm_out.view(len(input_seq), -1))
-        return predictions[-1]
+        batch_size = input_seq.size(0)
+        hidden_state = torch.zeros(1, batch_size, self.hidden_layer_size)
+        cell_state = torch.zeros(1, batch_size, self.hidden_layer_size)
+        self.hidden_cell = (hidden_state, cell_state)
+
+        input_seq = input_seq.transpose(0, 1)
+        lstm_out, self.hidden_cell = self.lstm(input_seq, self.hidden_cell)
+        
+        # 获取最后一个时间步的输出
+        lstm_out_last_step = lstm_out[-1]  # lstm_out的形状为 (sequence_length, batch_size, hidden_size)
+        
+        predictions = self.linear(lstm_out_last_step)
+        return predictions
+
     
 model = LSTMModel(input_size=7)
+# model = LSTMModel(input_size=210)
 
 loss_function = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
@@ -84,7 +104,7 @@ epochs = 150  # 可調整
 for epoch in range(epochs):
     model.train()
     total_loss = 0.0
-    for inputs, labels in train_data:
+    for inputs, labels in train_loader:
         optimizer.zero_grad()
         model.hidden_cell = (torch.zeros(1, 1, model.hidden_layer_size),
                              torch.zeros(1, 1, model.hidden_layer_size))
@@ -97,7 +117,7 @@ for epoch in range(epochs):
         total_loss += loss.item()
         iterator_losses.append(loss.item())  # 紀錄每次迭代的損失
 
-    epoch_loss = total_loss / len(train_data)
+    epoch_loss = total_loss / len(train_loader)
     epoch_losses.append(epoch_loss)  # 紀錄每個epoch的平均損失
 
     print(f'Epoch {epoch+1} Average Loss: {epoch_loss:.4f}')
@@ -117,11 +137,11 @@ for epoch in range(epochs):
 
 with torch.no_grad():
     total_test_loss = 0.0
-    for inputs, labels in test_data:
+    for inputs, labels in test_loader:
         y_pred = model(inputs)
         loss = loss_function(y_pred, labels)
         total_test_loss += loss.item()
-    avg_test_loss = total_test_loss / len(test_data)
+    avg_test_loss = total_test_loss / len(test_loader)
     print(f'Test loss: {avg_test_loss:.4f}')
 
 # 繪製每個epoch的平均損失
