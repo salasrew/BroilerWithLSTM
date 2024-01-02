@@ -58,14 +58,28 @@ class LSTMModel(nn.Module):
         super(LSTMModel, self).__init__()
         self.hidden_layer_size = hidden_layer_size
         self.lstm = nn.LSTM(input_size, hidden_layer_size)
-        self.linear = nn.Linear(hidden_layer_size, output_size)
-        self.hidden_cell = (torch.zeros(1,1,self.hidden_layer_size),
-                            torch.zeros(1,1,self.hidden_layer_size))
+        self.linear = nn.Linear(hidden_layer_size, output_size)  # 确保输出尺寸正确
 
     def forward(self, input_seq):
-        lstm_out, self.hidden_cell = self.lstm(input_seq.view(len(input_seq), 1, -1), self.hidden_cell)
-        predictions = self.linear(lstm_out.view(len(input_seq), -1))
-        return predictions[-1]
+        if input_seq.dim() != 3:
+            raise ValueError(f"Expected input_seq to be 3-dimensional, got {input_seq.dim()} dimensions.")
+
+        # 获取批量大小
+        batch_size = input_seq.size(0)
+
+        # 动态初始化隐藏状态和细胞状态
+        hidden_state = torch.zeros(1, batch_size, self.hidden_layer_size)
+        cell_state = torch.zeros(1, batch_size, self.hidden_layer_size)
+        self.hidden_cell = (hidden_state, cell_state)
+
+        # 调整输入数据的尺寸
+        input_seq = input_seq.transpose(0, 1)  # 确保输入尺寸为 (sequence_length, batch_size, features)
+
+        # 传递给 LSTM 层
+        lstm_out, self.hidden_cell = self.lstm(input_seq, self.hidden_cell)
+        predictions = self.linear(lstm_out[-1])  # 只取最后一个时间步的输出
+        return predictions
+
     
 model = LSTMModel(input_size=7)
 
@@ -85,6 +99,7 @@ for epoch in range(epochs):
     model.train()
     total_loss = 0.0
     for inputs, labels in train_data:
+        inputs = inputs.unsqueeze(0)
         optimizer.zero_grad()
         model.hidden_cell = (torch.zeros(1, 1, model.hidden_layer_size),
                              torch.zeros(1, 1, model.hidden_layer_size))
