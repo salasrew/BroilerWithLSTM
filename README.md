@@ -1,5 +1,3 @@
-"# BroilerWithLSTM" 
-
 # 時序模型實作專案
 
 ## 專案目的
